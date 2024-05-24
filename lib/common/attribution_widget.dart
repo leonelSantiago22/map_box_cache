@@ -9,7 +9,7 @@ class OsmAttributionWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return SimpleAttributionWidget(
       onTap: () => launchUrlString('https://openstreetmap.org/copyright'),
-      source: const Text('OpenStreetMap contributors'),
+      source: const Text('UTM pro team'),
     );
   }
 }

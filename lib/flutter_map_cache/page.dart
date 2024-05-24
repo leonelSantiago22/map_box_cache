@@ -11,6 +11,12 @@ import 'package:mapbox_map/flutter_map_cache/cache_store_types.dart';
 import 'package:mapbox_map/flutter_map_cache/connectivity_icon.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:open_route_service/open_route_service.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 
 class FlutterMapCachePage extends StatefulWidget {
   const FlutterMapCachePage({super.key});
@@ -22,20 +28,43 @@ class FlutterMapCachePage extends StatefulWidget {
 class _FlutterMapCachePageState extends State<FlutterMapCachePage> {
   CacheStore _cacheStore = MemCacheStore();
   final _dio = Dio();
+  LatLng? myPoint;
+  bool isLoading = false;
+  late MapController mapController;
 
-  @override
-  Widget build(BuildContext context) {
+  Future<void> determineAndSetPosition() async {
+    LocationPermission permission;
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        throw 'Location permission denied';
+      }
+    }
+    final Position position = await Geolocator.getCurrentPosition();
+    setState(() {
+      myPoint = LatLng(position.latitude, position.longitude);
+      print(myPoint);
+    });
+    mapController.move(
+        myPoint!, 10); // Accede a mapController después de inicializarlo
+  }
+
+
+  Widget mapContainer() {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('flutter_map_cache'),
+        title: const Text('App Pro'),
+        centerTitle: true,
+        backgroundColor: Colors.blue,
         actions: const [ConnectivityIcon()],
       ),
       body: Column(
         children: [
           Expanded(
             child: FlutterMap(
-              options: const MapOptions(
-                initialCenter: LatLng(47.141344, 9.553680),
+              options:  MapOptions(
+                initialCenter: myPoint!,
                 interactionOptions: InteractionOptions(
                   flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                 ),
@@ -60,6 +89,21 @@ class _FlutterMapCachePageState extends State<FlutterMapCachePage> {
                   ),
                   userAgentPackageName: 'com.github.josxha/flutter_map_plugins',
                 ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: myPoint!,
+                      width: 60,
+                      height: 60,
+                      alignment: Alignment.centerLeft,
+                      child: const Icon(
+                        Icons.person_pin_circle_sharp,
+                        size: 60,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ],
+                ),
                 const OsmAttributionWidget(),
               ],
             ),
@@ -70,7 +114,7 @@ class _FlutterMapCachePageState extends State<FlutterMapCachePage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                const Text('CacheStore Type'),
+                const Text('Descargando:'),
                 if (kIsWeb)
                   DropdownMenu<CacheStoreTypes>(
                     initialSelection: CacheStoreTypes.memCache,
@@ -90,17 +134,7 @@ class _FlutterMapCachePageState extends State<FlutterMapCachePage> {
                     builder: (context, snapshot) {
                       if (snapshot.hasData) {
                         final dataPath = snapshot.requireData.path;
-                        return DropdownMenu<CacheStoreTypes>(
-                          initialSelection: CacheStoreTypes.memCache,
-                          onSelected: (value) {
-                            if (value == null) return;
-                            debugPrint('CacheStore changed to ${value.name}');
-                            setState(() {
-                              _cacheStore = value.getCacheStore(dataPath);
-                            });
-                          },
-                          dropdownMenuEntries: CacheStoreTypes.dropdownList,
-                        );
+
                       }
                       if (snapshot.hasError) {
                         debugPrint(snapshot.error.toString());
@@ -115,6 +149,29 @@ class _FlutterMapCachePageState extends State<FlutterMapCachePage> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: myPoint == null
+            ? ElevatedButton(
+          onPressed: () {
+            determineAndSetPosition();
+          },
+          child: const Text('Activar localización'),
+        )
+            : mapContainer(),
+      ),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          const SizedBox(height: 10),
+
         ],
       ),
     );
