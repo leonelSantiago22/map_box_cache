@@ -25,12 +25,20 @@ class FlutterMapCachePage extends StatefulWidget {
   @override
   State<FlutterMapCachePage> createState() => _MapScreenState();
 }
+class Node {
+  final LatLng point;
+  double g; // Cost from start to current node
+  double h; // Heuristic cost to end
+  double get f => g + h; // Total cost
+  Node? parent; // For path reconstruction
+
+  Node(this.point, {this.g = 0, this.h = 0, this.parent});
+}
 
 class DraggableMarker extends StatelessWidget {
   final LatLng point;
   final Function(LatLng) onDragEnd;
   DraggableMarker({required this.point, required this.onDragEnd});
-
   @override
   Widget build(BuildContext context) {
     return Draggable(
@@ -52,6 +60,56 @@ class DraggableMarker extends StatelessWidget {
     );
   }
 }
+List<LatLng> aStar(LatLng start, LatLng end, List<LatLng> waypoints) {
+  Node startNode = Node(start);
+  Node endNode = Node(end);
+
+  List<Node> openList = [];
+  List<Node> closedList = [];
+
+  openList.add(startNode);
+
+  Node? currentNode;
+
+  while (openList.isNotEmpty) {
+    openList.sort((a, b) => a.f.compareTo(b.f));
+    currentNode = openList.removeAt(0);
+    closedList.add(currentNode);
+
+    if (currentNode.point == endNode.point) {
+      List<LatLng> path = [];
+      while (currentNode != null) {
+        path.add(currentNode.point);
+        currentNode = currentNode.parent;
+      }
+      return path.reversed.toList();
+    }
+
+    for (LatLng point in waypoints) {
+      Node neighbor = Node(point, parent: currentNode);
+      if (closedList.any((node) => node.point == neighbor.point)) {
+        continue;
+      }
+
+      neighbor.g = currentNode.g + _distance(currentNode.point, neighbor.point);
+      neighbor.h = _distance(neighbor.point, endNode.point);
+
+      if (openList.any((node) => node.point == neighbor.point && node.f < neighbor.f)) {
+        continue;
+      }
+
+      openList.add(neighbor);
+    }
+  }
+
+  return [];
+}
+
+double _distance(LatLng a, LatLng b) {
+  final double dx = a.latitude - b.latitude;
+  final double dy = a.longitude - b.longitude;
+  return dx * dx + dy * dy;
+}
 
 class _MapScreenState extends State<FlutterMapCachePage> {
   CacheStore _cacheStore = MemCacheStore();
@@ -62,6 +120,7 @@ class _MapScreenState extends State<FlutterMapCachePage> {
   TextEditingController searchController = TextEditingController();
   LatLng? searchLocation;
   final MapController mapController = MapController();
+  bool useAStar = true;
 
   Future<void> determineAndSetPosition() async {
     LocationPermission permission;
@@ -187,7 +246,18 @@ class _MapScreenState extends State<FlutterMapCachePage> {
             isLoading = true;
           });
 
-          _greedySearch(markers.map((marker) => marker.point).toList());
+          if (useAStar) {
+            List<LatLng> waypoints = markers.map((marker) => marker.point).toList();
+            LatLng start = waypoints.removeAt(0);
+            LatLng end = waypoints.removeLast();
+            List<LatLng> route = aStar(start, end, waypoints);
+            setState(() {
+              points = route;
+              isLoading = false;
+            });
+          } else {
+            _greedySearch(markers.map((marker) => marker.point).toList());
+          }
         });
 
         LatLngBounds bounds = LatLngBounds.fromPoints(
@@ -420,6 +490,57 @@ class _MapScreenState extends State<FlutterMapCachePage> {
                 ),
               ),
             ),
+          ),
+        ),
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              const Text('CacheStore Type'),
+              if (kIsWeb)
+                DropdownMenu<CacheStoreTypes>(
+                  initialSelection: CacheStoreTypes.memCache,
+                  onSelected: (value) {
+                    if (value == null) return;
+                    debugPrint('CacheStore changed to ${value.name}');
+                    setState(() {
+                      _cacheStore = value.getCacheStoreWeb();
+                    });
+                  },
+                  dropdownMenuEntries: CacheStoreTypes.dropdownList,
+                ),
+              if (!kIsWeb)
+                FutureBuilder<Directory>(
+                  // ignore: discarded_futures
+                  future: getTemporaryDirectory(), // not available on web
+                  builder: (context, snapshot) {
+                    if (snapshot.hasData) {
+                      final dataPath = snapshot.requireData.path;
+                      return DropdownMenu<CacheStoreTypes>(
+                        initialSelection: CacheStoreTypes.memCache,
+                        onSelected: (value) {
+                          if (value == null) return;
+                          debugPrint('CacheStore changed to ${value.name}');
+                          setState(() {
+                            _cacheStore = value.getCacheStore(dataPath);
+                          });
+                        },
+                        dropdownMenuEntries: CacheStoreTypes.dropdownList,
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      debugPrint(snapshot.error.toString());
+                      debugPrintStack(stackTrace: snapshot.stackTrace);
+                      return Expanded(
+                        child: Text(snapshot.error.toString()),
+                      );
+                    }
+                    return const Expanded(child: LinearProgressIndicator());
+                  },
+                ),
+            ],
           ),
         ),
         if (showAdditionalButtons)
