@@ -315,6 +315,8 @@ class _MapScreenState extends State<MapScreen> {
   List listOfPoints = [];
   List<LatLng> points = [];
 
+
+  // Se usa open Route service para extraer las coordenadas
   Future<List<LatLng>> getCoordinates(LatLng lat1, LatLng lat2) async {
     setState(() {
       isLoading = true;
