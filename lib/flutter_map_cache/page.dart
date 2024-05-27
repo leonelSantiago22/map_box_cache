@@ -60,50 +60,6 @@ class DraggableMarker extends StatelessWidget {
     );
   }
 }
-List<LatLng> aStar(LatLng start, LatLng end, List<LatLng> waypoints) {
-  Node startNode = Node(start);
-  Node endNode = Node(end);
-
-  List<Node> openList = [];
-  List<Node> closedList = [];
-
-  openList.add(startNode);
-
-  Node? currentNode;
-
-  while (openList.isNotEmpty) {
-    openList.sort((a, b) => a.f.compareTo(b.f));
-    currentNode = openList.removeAt(0);
-    closedList.add(currentNode);
-
-    if (currentNode.point == endNode.point) {
-      List<LatLng> path = [];
-      while (currentNode != null) {
-        path.add(currentNode.point);
-        currentNode = currentNode.parent;
-      }
-      return path.reversed.toList();
-    }
-
-    for (LatLng point in waypoints) {
-      Node neighbor = Node(point, parent: currentNode);
-      if (closedList.any((node) => node.point == neighbor.point)) {
-        continue;
-      }
-
-      neighbor.g = currentNode.g + _distance(currentNode.point, neighbor.point);
-      neighbor.h = _distance(neighbor.point, endNode.point);
-
-      if (openList.any((node) => node.point == neighbor.point && node.f < neighbor.f)) {
-        continue;
-      }
-
-      openList.add(neighbor);
-    }
-  }
-
-  return [];
-}
 
 double _distance(LatLng a, LatLng b) {
   final double dx = a.latitude - b.latitude;
@@ -196,6 +152,52 @@ class _MapScreenState extends State<FlutterMapCachePage> {
       isLoading = false;
     });
   }
+
+  List<LatLng> aStar(LatLng start, LatLng end, List<LatLng> waypoints) {
+    Node startNode = Node(start);
+    Node endNode = Node(end);
+
+    List<Node> openList = [];
+    List<Node> closedList = [];
+
+    openList.add(startNode);
+
+    Node? currentNode;
+
+    while (openList.isNotEmpty) {
+      openList.sort((a, b) => a.f.compareTo(b.f));
+      currentNode = openList.removeAt(0);
+      closedList.add(currentNode);
+
+      if (currentNode.point == endNode.point) {
+        List<LatLng> path = [];
+        while (currentNode != null) {
+          path.add(currentNode.point);
+          currentNode = currentNode.parent;
+        }
+        return path.reversed.toList();
+      }
+
+      for (LatLng point in waypoints) {
+        Node neighbor = Node(point, parent: currentNode);
+        if (closedList.any((node) => node.point == neighbor.point)) {
+          continue;
+        }
+
+        neighbor.g = currentNode.g + _distance(currentNode.point, neighbor.point);
+        neighbor.h = _distance(neighbor.point, endNode.point);
+
+        if (openList.any((node) => node.point == neighbor.point && node.f < neighbor.f)) {
+          continue;
+        }
+
+        openList.add(neighbor);
+      }
+    }
+
+    return [];
+  }
+
 
   void _handleTap2(LatLng latLng) {
     setState(() {
@@ -462,7 +464,7 @@ class _MapScreenState extends State<FlutterMapCachePage> {
           ),
         ),
         Positioned(
-          top: MediaQuery.of(context).padding.top + 20.0,
+          top: MediaQuery.of(context).padding.top + 50.0,
           left: MediaQuery.of(context).size.width / 2 - 110,
           child: Align(
             child: TextButton(
@@ -490,8 +492,78 @@ class _MapScreenState extends State<FlutterMapCachePage> {
                 ),
               ),
             ),
+
           ),
         ),
+        if (showAdditionalButtons)
+          Positioned(
+            bottom: 230,
+            right: 16,
+            child: Column(
+              children: [
+                FloatingActionButton(
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (BuildContext context) {
+                        return AlertDialog(
+                          title: Text('Buscar ubicación'),
+                          content: TextField(
+                            controller: searchController,
+                            decoration: InputDecoration(
+                              hintText: 'Ingrese la ubicación',
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () {
+                                searchAndMoveToPlace(searchController.text);
+                                Navigator.of(context).pop();
+                              },
+                              child: Text('Buscar'),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
+                  child: Icon(Icons.search),
+                ),
+                SizedBox(height: 16),
+                FloatingActionButton(
+                  onPressed: () {
+                    determineAndSetPosition();
+                  },
+                  child: Icon(Icons.location_pin),
+                ),
+                FloatingActionButton(
+                  onPressed: () {
+                    setState(() {
+                      showAdditionalButtons = !showAdditionalButtons;
+                    });
+                    if(useAStar){
+                      useAStar = false;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Avara activada'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }else{
+                      useAStar = true;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Activado A*'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                  child: Icon(useAStar ? Icons.star: Icons.search_off),
+                ),
+              ],
+            ),
+          ),
         Container(
           color: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -543,50 +615,6 @@ class _MapScreenState extends State<FlutterMapCachePage> {
             ],
           ),
         ),
-        if (showAdditionalButtons)
-          Positioned(
-            bottom: 230,
-            right: 16,
-            child: Column(
-              children: [
-                FloatingActionButton(
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (BuildContext context) {
-                        return AlertDialog(
-                          title: Text('Buscar ubicación'),
-                          content: TextField(
-                            controller: searchController,
-                            decoration: InputDecoration(
-                              hintText: 'Ingrese la ubicación',
-                            ),
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () {
-                                searchAndMoveToPlace(searchController.text);
-                                Navigator.of(context).pop();
-                              },
-                              child: Text('Buscar'),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                  child: Icon(Icons.search),
-                ),
-                SizedBox(height: 16),
-                FloatingActionButton(
-                  onPressed: () {
-                    determineAndSetPosition();
-                  },
-                  child: Icon(Icons.location_pin),
-                ),
-              ],
-            ),
-          ),
       ],
     );
   }
